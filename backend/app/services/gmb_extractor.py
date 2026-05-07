@@ -1,6 +1,6 @@
 """
-Google My Business (Places API) bulk extractor.
-Fetches businesses by keyword + city, scores them, and stores in DB.
+Google Places API (New) bulk extractor.
+Uses the Places API (New) which supports newer API keys.
 """
 import asyncio
 from typing import AsyncGenerator
@@ -12,42 +12,47 @@ from app.config import settings
 from app.models.lead import Lead, LeadStatus
 from app.services.lead_scorer import score_lead
 
-PLACES_TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-PLACES_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+PLACES_FIELD_MASK = (
+    "places.id,places.displayName,places.formattedAddress,"
+    "places.nationalPhoneNumber,places.internationalPhoneNumber,"
+    "places.websiteUri,places.rating,places.userRatingCount,places.types"
+)
 
-DETAIL_FIELDS = "name,formatted_phone_number,website,formatted_address,rating,user_ratings_total,types,place_id"
 
-
-async def fetch_place_ids(client: httpx.AsyncClient, keyword: str, city: str, radius_m: int) -> list[dict]:
-    """Return list of {place_id, name, rating, user_ratings_total, types} from text search."""
+async def fetch_places(
+    client: httpx.AsyncClient, keyword: str, city: str, max_results: int
+) -> list[dict]:
+    """Return list of place dicts from Places API (New) text search."""
     results = []
     query = f"{keyword} in {city}"
-    params = {
-        "query": query,
-        "radius": radius_m,
-        "key": settings.GOOGLE_PLACES_API_KEY,
+    headers = {
+        "X-Goog-Api-Key": settings.GOOGLE_PLACES_API_KEY,
+        "X-Goog-FieldMask": PLACES_FIELD_MASK,
+        "Content-Type": "application/json",
     }
-    while True:
-        resp = await client.get(PLACES_TEXT_SEARCH_URL, params=params)
+
+    page_token = None
+    while len(results) < max_results:
+        batch = min(20, max_results - len(results))
+        body: dict = {"textQuery": query, "maxResultCount": batch}
+        if page_token:
+            body["pageToken"] = page_token
+
+        resp = await client.post(PLACES_SEARCH_URL, headers=headers, json=body)
         resp.raise_for_status()
         data = resp.json()
-        results.extend(data.get("results", []))
-        next_page = data.get("next_page_token")
-        if not next_page:
+
+        places = data.get("places", [])
+        results.extend(places)
+
+        page_token = data.get("nextPageToken")
+        if not page_token or not places:
             break
-        params = {"pagetoken": next_page, "key": settings.GOOGLE_PLACES_API_KEY}
-        await asyncio.sleep(2)  # Google requires a short delay before using next_page_token
-    return results
 
+        await asyncio.sleep(1)
 
-async def fetch_place_details(client: httpx.AsyncClient, place_id: str) -> dict:
-    """Fetch detailed info (phone, website, address) for a single place."""
-    resp = await client.get(
-        PLACES_DETAILS_URL,
-        params={"place_id": place_id, "fields": DETAIL_FIELDS, "key": settings.GOOGLE_PLACES_API_KEY},
-    )
-    resp.raise_for_status()
-    return resp.json().get("result", {})
+    return results[:max_results]
 
 
 def _extract_city_state(formatted_address: str | None) -> tuple[str | None, str | None]:
@@ -70,40 +75,38 @@ async def extract_leads(
     Generator that yields progress dicts as leads are extracted.
     Each yield: {"processed": int, "total": int, "lead": Lead | None, "status": str}
     """
-    radius_m = radius_km * 1000
+    from sqlalchemy import select
 
     async with httpx.AsyncClient(timeout=30) as client:
-        raw_results = await fetch_place_ids(client, keyword, city, radius_m)
-        raw_results = raw_results[:max_results]
+        raw_results = await fetch_places(client, keyword, city, max_results)
         total = len(raw_results)
 
-        for idx, result in enumerate(raw_results):
-            place_id = result.get("place_id")
+        for idx, place in enumerate(raw_results):
+            place_id = place.get("id")
             if not place_id:
                 continue
 
-            # Skip if already in DB
-            from sqlalchemy import select
             existing = await db.scalar(select(Lead).where(Lead.google_place_id == place_id))
             if existing:
                 yield {"processed": idx + 1, "total": total, "lead": None, "status": "duplicate"}
                 continue
 
-            details = await fetch_place_details(client, place_id)
-            website = details.get("website")
+            name = place.get("displayName", {}).get("text", "")
+            phone = place.get("nationalPhoneNumber") or place.get("internationalPhoneNumber")
+            website = place.get("websiteUri")
             has_website = bool(website)
-            rating = details.get("rating") or result.get("rating")
-            review_count = details.get("user_ratings_total") or result.get("user_ratings_total")
-            types = details.get("types") or result.get("types", [])
+            rating = place.get("rating")
+            review_count = place.get("userRatingCount")
+            types = place.get("types", [])
             category = types[0].replace("_", " ") if types else None
-            formatted_address = details.get("formatted_address")
+            formatted_address = place.get("formattedAddress")
             city_val, state_val = _extract_city_state(formatted_address)
 
             lead_score = score_lead(has_website, rating, review_count, category)
 
             lead = Lead(
-                business_name=details.get("name") or result.get("name", ""),
-                phone=details.get("formatted_phone_number"),
+                business_name=name,
+                phone=phone,
                 website=website,
                 has_website=has_website,
                 address=formatted_address,
@@ -123,5 +126,4 @@ async def extract_leads(
 
             yield {"processed": idx + 1, "total": total, "lead": lead, "status": "created"}
 
-            # Respect Google API rate limits
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)
