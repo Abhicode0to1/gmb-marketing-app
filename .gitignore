@@ -1,0 +1,24 @@
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Logs
+*.log
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# OS
+.DS_Store
+Thumbs.db
