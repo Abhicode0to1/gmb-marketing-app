@@ -1,32 +1,34 @@
 """
 Celery tasks for GMB bulk extraction.
-Progress is published to Redis so the frontend can poll it via SSE.
+Progress is stored in a Redis list so SSE clients can replay missed events.
 """
 import asyncio
 import json
-import uuid
 
 import redis as redis_sync
 
 from app.config import settings
 from app.workers.celery_app import celery_app
 
+EVENTS_TTL = 3600  # keep events for 1 hour
+
 
 def _get_redis():
     return redis_sync.from_url(settings.REDIS_URL)
 
 
+def _push(r, list_key: str, payload: dict):
+    r.rpush(list_key, json.dumps(payload))
+    r.expire(list_key, EVENTS_TTL)
+
+
 @celery_app.task(bind=True, name="app.workers.extraction_tasks.extract_leads_task")
 def extract_leads_task(self, keyword: str, city: str, radius_km: int, max_results: int, job_id: str):
-    """
-    Runs the GMB extraction in an async event loop and publishes
-    progress updates to Redis channel: extraction:{job_id}
-    """
     from app.database import AsyncSessionLocal
     from app.services.gmb_extractor import extract_leads
 
     r = _get_redis()
-    channel = f"extraction:{job_id}"
+    list_key = f"extraction_events:{job_id}"
 
     async def _run():
         async with AsyncSessionLocal() as db:
@@ -39,9 +41,9 @@ def extract_leads_task(self, keyword: str, city: str, radius_km: int, max_result
                     "lead_name": lead.business_name if lead else None,
                     "lead_score": lead.lead_score if lead else None,
                 }
-                r.publish(channel, json.dumps(payload))
+                _push(r, list_key, payload)
 
-        r.publish(channel, json.dumps({"done": True, "processed": max_results, "total": max_results}))
+        _push(r, list_key, {"done": True, "processed": max_results, "total": max_results})
 
     asyncio.run(_run())
     return {"job_id": job_id, "status": "completed"}

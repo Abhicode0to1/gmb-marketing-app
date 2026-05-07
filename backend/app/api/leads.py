@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from typing import Annotated
 
@@ -151,18 +152,24 @@ async def extraction_progress(
 
     async def event_stream():
         r = aioredis.from_url(settings.REDIS_URL)
-        pubsub = r.pubsub()
-        await pubsub.subscribe(f"extraction:{job_id}")
+        list_key = f"extraction_events:{job_id}"
+        idx = 0
+        timeout = 300  # 5 min max
+        waited = 0
         try:
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    data = message["data"].decode()
-                    yield f"data: {data}\n\n"
-                    parsed = json.loads(data)
-                    if parsed.get("done"):
-                        break
+            while waited < timeout:
+                items = await r.lrange(list_key, idx, -1)
+                if items:
+                    for item in items:
+                        data = item.decode()
+                        yield f"data: {data}\n\n"
+                        idx += 1
+                        if json.loads(data).get("done"):
+                            return
+                else:
+                    await asyncio.sleep(0.5)
+                    waited += 0.5
         finally:
-            await pubsub.unsubscribe()
             await r.aclose()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
