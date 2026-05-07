@@ -125,12 +125,29 @@ async def start_extraction(
 
 
 @router.get("/extract/progress/{job_id}")
-async def extraction_progress(job_id: str, _: User = Depends(get_current_user)):
-    """Server-Sent Events stream for extraction progress."""
+async def extraction_progress(
+    job_id: str,
+    token: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Server-Sent Events stream for extraction progress.
+    Accepts token via query param because EventSource cannot send headers.
+    """
     import json
     from fastapi.responses import StreamingResponse
     import redis.asyncio as aioredis
     from app.config import settings
+    from app.services.auth_service import decode_token
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Token required")
+    payload = decode_token(token)
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user = await db.get(User, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found")
 
     async def event_stream():
         r = aioredis.from_url(settings.REDIS_URL)
