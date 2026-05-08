@@ -1,12 +1,17 @@
 import { useState } from "react";
-import { Search, CheckCircle, Loader } from "lucide-react";
+import { Search, CheckCircle, Loader, Globe, Mail } from "lucide-react";
 import { startExtraction } from "../api";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export default function Extractor() {
-  const [form, setForm] = useState({ keyword: "", city: "", radius_km: 10, max_results: 100 });
-  const [jobId, setJobId] = useState(null);
+  const [form, setForm] = useState({
+    keyword: "",
+    city: "",
+    radius_km: 10,
+    max_results: 100,
+    no_website_only: true,
+  });
   const [progress, setProgress] = useState(null);
   const [log, setLog] = useState([]);
   const [running, setRunning] = useState(false);
@@ -21,7 +26,6 @@ export default function Extractor() {
 
     const res = await startExtraction(form);
     const id = res.data.job_id;
-    setJobId(id);
 
     const token = localStorage.getItem("token");
     const es = new EventSource(
@@ -50,13 +54,17 @@ export default function Extractor() {
     };
   };
 
-  const pct = progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+  const pct = progress && progress.total > 0
+    ? Math.round((progress.processed / progress.total) * 100)
+    : 0;
 
   return (
     <div className="p-6 space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">GMB Extractor</h2>
-        <p className="text-gray-500 text-sm">Bulk extract leads from Google My Business</p>
+        <p className="text-gray-500 text-sm">
+          Find businesses with no website &amp; no corporate email — ideal prospects for web design services
+        </p>
       </div>
 
       <div className="card p-5 max-w-lg">
@@ -105,6 +113,26 @@ export default function Extractor() {
               />
             </div>
           </div>
+
+          {/* Key filter */}
+          <label className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-blue-600"
+              checked={form.no_website_only}
+              onChange={(e) => setForm((p) => ({ ...p, no_website_only: e.target.checked }))}
+            />
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-blue-800">
+                <Globe size={14} />
+                Only businesses without a real website
+              </div>
+              <p className="text-xs text-blue-600 mt-0.5">
+                Skips businesses with proper websites. Targets those using only Facebook/Instagram or nothing at all — they almost certainly use Gmail/Yahoo instead of corporate email.
+              </p>
+            </div>
+          </label>
+
           <button className="btn-primary w-full justify-center" disabled={running}>
             {running ? (
               <><Loader size={16} className="animate-spin" /> Extracting...</>
@@ -142,12 +170,12 @@ export default function Extractor() {
               </div>
               {progress.duplicate_count > 0 && (
                 <div className="text-sm text-yellow-600">
-                  {progress.duplicate_count} duplicates skipped (already in database).
+                  {progress.duplicate_count} skipped (already in database or has website).
                 </div>
               )}
               {progress.new_count === 0 && progress.duplicate_count === 0 && (
                 <div className="text-sm text-gray-500">
-                  No results returned by Google Places for this query.
+                  No results from Google Places for this query.
                 </div>
               )}
             </div>
@@ -155,15 +183,20 @@ export default function Extractor() {
 
           <div className="max-h-64 overflow-y-auto space-y-1">
             {log.map((item, i) => (
-              <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-gray-50">
-                <span className="text-gray-700">{item.name}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`badge ${item.score >= 60 ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+              <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-50">
+                <span className="text-gray-700 truncate max-w-xs">{item.name}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`badge ${item.score >= 60 ? "bg-green-100 text-green-700" : item.score >= 40 ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
                     Score: {item.score}
                   </span>
-                  {item.status === "duplicate" && (
-                    <span className="badge bg-yellow-100 text-yellow-700">Duplicate</span>
+                  {!item.has_website && (
+                    <span className="badge bg-orange-100 text-orange-700 flex items-center gap-1">
+                      <Globe size={10} /> No site
+                    </span>
                   )}
+                  <span className="badge bg-purple-100 text-purple-700 flex items-center gap-1">
+                    <Mail size={10} /> Gmail likely
+                  </span>
                 </div>
               </div>
             ))}

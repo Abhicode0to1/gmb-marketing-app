@@ -23,7 +23,7 @@ def _push(r, list_key: str, payload: dict):
 
 
 @celery_app.task(bind=True, name="app.workers.extraction_tasks.extract_leads_task")
-def extract_leads_task(self, keyword: str, city: str, radius_km: int, max_results: int, job_id: str):
+def extract_leads_task(self, keyword: str, city: str, radius_km: int, max_results: int, job_id: str, no_website_only: bool = False):
     from app.database import AsyncSessionLocal
     from app.services.gmb_extractor import extract_leads
 
@@ -36,14 +36,14 @@ def extract_leads_task(self, keyword: str, city: str, radius_km: int, max_result
         actual_total = 0
 
         async with AsyncSessionLocal() as db:
-            async for progress in extract_leads(db, keyword, city, radius_km, max_results):
+            async for progress in extract_leads(db, keyword, city, radius_km, max_results, no_website_only):
                 lead = progress.get("lead")
                 actual_total = progress["total"]
                 status = progress["status"]
 
                 if status == "created":
                     new_count += 1
-                elif status == "duplicate":
+                elif status in ("duplicate", "skipped"):
                     duplicate_count += 1
 
                 payload = {

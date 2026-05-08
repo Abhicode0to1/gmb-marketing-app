@@ -115,13 +115,14 @@ async def start_extraction(
     city: str,
     radius_km: int = 10,
     max_results: int = 100,
+    no_website_only: bool = False,
     _: User = Depends(get_current_user),
 ):
     import uuid as _uuid
     from app.workers.extraction_tasks import extract_leads_task
 
     job_id = str(_uuid.uuid4())
-    extract_leads_task.delay(keyword, city, radius_km, min(max_results, 500), job_id)
+    extract_leads_task.delay(keyword, city, radius_km, min(max_results, 500), job_id, no_website_only)
     return {"job_id": job_id, "message": f"Extraction started for '{keyword}' in {city}"}
 
 

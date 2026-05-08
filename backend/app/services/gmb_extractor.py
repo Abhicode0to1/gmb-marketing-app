@@ -1,9 +1,10 @@
 """
 Google Places API (New) bulk extractor.
-Uses the Places API (New) which supports newer API keys.
+Targets businesses with no real website (primary) and social-media-only presence (secondary).
 """
 import asyncio
 from typing import AsyncGenerator
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,11 +21,43 @@ PLACES_FIELD_MASK = (
     "nextPageToken"
 )
 
+# Businesses using these as their "website" don't have a real web presence
+SOCIAL_DOMAINS = {
+    "facebook.com", "fb.com", "instagram.com", "twitter.com", "x.com",
+    "linkedin.com", "youtube.com", "tiktok.com", "snapchat.com",
+    "wa.me", "whatsapp.com", "linktr.ee", "linktree.com",
+    "g.co", "goo.gl", "maps.google.com",
+}
+
+
+def classify_website(url: str | None) -> tuple[bool, bool]:
+    """
+    Returns (has_real_website, is_social_only).
+    has_real_website = True  → they have a proper domain
+    is_social_only   = True  → their only online presence is a social media link
+    """
+    if not url:
+        return False, False
+    try:
+        domain = urlparse(url).netloc.lower().lstrip("www.")
+        if any(sd in domain for sd in SOCIAL_DOMAINS):
+            return False, True   # social link counts as no real website
+        return True, False
+    except Exception:
+        return False, False
+
+
+def build_notes(has_real_website: bool, is_social_only: bool, website: str | None) -> str | None:
+    if not has_real_website and not is_social_only:
+        return "No website — almost certainly using a personal email (Gmail/Yahoo). High-value web design prospect."
+    if is_social_only:
+        return f"No real website (only {website}) — likely using personal email. Good redesign prospect."
+    return None
+
 
 async def fetch_places(
     client: httpx.AsyncClient, keyword: str, city: str, max_results: int
 ) -> list[dict]:
-    """Return list of place dicts from Places API (New) text search."""
     results = []
     query = f"{keyword} in {city}"
     headers = {
@@ -71,10 +104,11 @@ async def extract_leads(
     city: str,
     radius_km: int = 10,
     max_results: int = 100,
+    no_website_only: bool = False,
 ) -> AsyncGenerator[dict, None]:
     """
-    Generator that yields progress dicts as leads are extracted.
-    Each yield: {"processed": int, "total": int, "lead": Lead | None, "status": str}
+    Yields progress dicts as leads are extracted.
+    When no_website_only=True, skips businesses that have a real website.
     """
     from sqlalchemy import select
 
@@ -92,24 +126,31 @@ async def extract_leads(
                 yield {"processed": idx + 1, "total": total, "lead": None, "status": "duplicate"}
                 continue
 
+            raw_website = place.get("websiteUri")
+            has_real_website, is_social_only = classify_website(raw_website)
+
+            # Skip businesses with real websites when filter is active
+            if no_website_only and has_real_website:
+                yield {"processed": idx + 1, "total": total, "lead": None, "status": "skipped"}
+                continue
+
             name = place.get("displayName", {}).get("text", "")
             phone = place.get("nationalPhoneNumber") or place.get("internationalPhoneNumber")
-            website = place.get("websiteUri")
-            has_website = bool(website)
             rating = place.get("rating")
             review_count = place.get("userRatingCount")
             types = place.get("types", [])
             category = types[0].replace("_", " ") if types else None
             formatted_address = place.get("formattedAddress")
             city_val, state_val = _extract_city_state(formatted_address)
+            notes = build_notes(has_real_website, is_social_only, raw_website)
 
-            lead_score = score_lead(has_website, rating, review_count, category)
+            lead_score = score_lead(has_real_website, is_social_only, rating, review_count, category)
 
             lead = Lead(
                 business_name=name,
                 phone=phone,
-                website=website,
-                has_website=has_website,
+                website=raw_website if has_real_website else None,
+                has_website=has_real_website,
                 address=formatted_address,
                 city=city_val or city,
                 state=state_val,
@@ -120,6 +161,7 @@ async def extract_leads(
                 review_count=review_count,
                 lead_score=lead_score,
                 status=LeadStatus.new,
+                notes=notes,
             )
             db.add(lead)
             await db.commit()
