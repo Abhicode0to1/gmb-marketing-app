@@ -10,7 +10,7 @@ import redis as redis_sync
 from app.config import settings
 from app.workers.celery_app import celery_app
 
-EVENTS_TTL = 3600  # keep events for 1 hour
+EVENTS_TTL = 3600
 
 
 def _get_redis():
@@ -31,19 +31,37 @@ def extract_leads_task(self, keyword: str, city: str, radius_km: int, max_result
     list_key = f"extraction_events:{job_id}"
 
     async def _run():
+        new_count = 0
+        duplicate_count = 0
+        actual_total = 0
+
         async with AsyncSessionLocal() as db:
             async for progress in extract_leads(db, keyword, city, radius_km, max_results):
                 lead = progress.get("lead")
+                actual_total = progress["total"]
+                status = progress["status"]
+
+                if status == "created":
+                    new_count += 1
+                elif status == "duplicate":
+                    duplicate_count += 1
+
                 payload = {
                     "processed": progress["processed"],
-                    "total": progress["total"],
-                    "status": progress["status"],
+                    "total": actual_total,
+                    "status": status,
                     "lead_name": lead.business_name if lead else None,
                     "lead_score": lead.lead_score if lead else None,
                 }
                 _push(r, list_key, payload)
 
-        _push(r, list_key, {"done": True, "processed": max_results, "total": max_results})
+        _push(r, list_key, {
+            "done": True,
+            "processed": actual_total,
+            "total": actual_total,
+            "new_count": new_count,
+            "duplicate_count": duplicate_count,
+        })
 
     asyncio.run(_run())
     return {"job_id": job_id, "status": "completed"}

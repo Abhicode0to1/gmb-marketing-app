@@ -50,7 +50,7 @@ export default function Extractor() {
     };
   };
 
-  const pct = progress ? Math.round((progress.processed / progress.total) * 100) : 0;
+  const pct = progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -133,8 +133,23 @@ export default function Extractor() {
           </div>
 
           {done && (
-            <div className="flex items-center gap-2 text-green-600 font-medium mb-3">
-              <CheckCircle size={18} /> Done! {progress.processed} leads processed.
+            <div className="mb-3 space-y-1">
+              <div className="flex items-center gap-2 text-green-600 font-medium">
+                <CheckCircle size={18} />
+                {progress.new_count > 0
+                  ? `Done! ${progress.new_count} new leads added.`
+                  : "Done! No new leads found."}
+              </div>
+              {progress.duplicate_count > 0 && (
+                <div className="text-sm text-yellow-600">
+                  {progress.duplicate_count} duplicates skipped (already in database).
+                </div>
+              )}
+              {progress.new_count === 0 && progress.duplicate_count === 0 && (
+                <div className="text-sm text-gray-500">
+                  No results returned by Google Places for this query.
+                </div>
+              )}
             </div>
           )}
 
