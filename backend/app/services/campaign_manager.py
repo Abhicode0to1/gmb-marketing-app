@@ -27,6 +27,12 @@ async def get_campaign_leads(db: AsyncSession, campaign: Campaign) -> list[Lead]
         query = query.where(Lead.lead_score >= int(filters["min_score"]))
     if filters.get("no_website_only"):
         query = query.where(Lead.has_website == False)  # noqa: E712
+    needs_list = filters.get("service_needs", [])
+    if needs_list:
+        from sqlalchemy import or_
+        query = query.where(or_(*[Lead.service_needs.contains([n]) for n in needs_list]))
+    if filters.get("no_corporate_email"):
+        query = query.where(Lead.has_corporate_email == False)  # noqa: E712
 
     result = await db.execute(query)
     leads = result.scalars().all()

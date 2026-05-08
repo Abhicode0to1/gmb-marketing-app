@@ -11,6 +11,24 @@ Your job is to write compelling, personalized marketing messages that convince l
 Always write in a friendly, professional tone. Messages should be specific to the business type, feel personal (not spammy), and have a clear call-to-action.
 Use the exact personalization tokens {business_name} and {city} in your output — do NOT replace them with example names."""
 
+_SERVICE_CONTEXT = {
+    "new_website": (
+        "This business has NO website at all — they only use Facebook/Instagram or nothing. "
+        "They are losing customers every day to competitors who appear in Google search. "
+        "The message should highlight what they're missing out on and how easy it is to fix."
+    ),
+    "redesign": (
+        "This business has an outdated, broken, or mobile-unfriendly website. "
+        "Their site may not load properly, looks old-fashioned, or is built on a free platform like Wix. "
+        "The message should acknowledge their existing effort but show how a modern redesign will get them more customers."
+    ),
+    "corporate_email": (
+        "This business uses Gmail/Yahoo for all business communication (e.g. businessname@gmail.com). "
+        "This looks unprofessional to customers and makes them look like a small unorganized operation. "
+        "The message should pitch a professional domain email (e.g. owner@businessname.com) as a quick trust-builder."
+    ),
+}
+
 
 def generate_templates(
     business_category: str,
@@ -19,6 +37,7 @@ def generate_templates(
     tone: str = "friendly",
     language: str = "English",
     extra_offer: str = "",
+    service_type: str = "new_website",
 ) -> dict:
     """
     Generate email subject, email HTML body, and WhatsApp message using Claude.
@@ -34,6 +53,7 @@ def generate_templates(
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     offer_note = f"\nSpecial offer to include: {extra_offer}" if extra_offer else ""
+    service_context = _SERVICE_CONTEXT.get(service_type, _SERVICE_CONTEXT["new_website"])
 
     prompt = f"""Generate marketing templates for web design outreach to a local business.
 
@@ -43,6 +63,9 @@ Business details:
 - Service we're selling: {service_offered}
 - Tone: {tone}
 - Language: {language}{offer_note}
+
+Key insight about this prospect (IMPORTANT — tailor the message to this):
+{service_context}
 
 Please generate all three of the following. Use {{business_name}} and {{city}} as personalization tokens — they will be auto-replaced before sending.
 

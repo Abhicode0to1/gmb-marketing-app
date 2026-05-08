@@ -14,6 +14,7 @@ class GenerateRequest(BaseModel):
     tone: str = "friendly"
     language: str = "English"
     extra_offer: str = ""
+    service_type: str = "new_website"  # "new_website" | "redesign" | "corporate_email"
 
 
 @router.post("/generate")
@@ -32,6 +33,7 @@ async def generate_templates(body: GenerateRequest, _: User = Depends(get_curren
             tone=body.tone,
             language=body.language,
             extra_offer=body.extra_offer,
+            service_type=body.service_type,
         )
         return result
     except Exception as e:

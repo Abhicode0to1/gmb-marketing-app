@@ -4,6 +4,12 @@ import { generateTemplates } from "../../api";
 
 const STEPS = ["Basic Info", "Target Audience", "AI Generate", "Email Template", "WhatsApp Message", "Follow-ups", "Review & Save"];
 
+const SERVICE_NEED_OPTIONS = [
+  { value: "new_website", label: "No website", description: "Uses Facebook/Instagram or nothing" },
+  { value: "redesign", label: "Needs redesign", description: "Old, broken, or mobile-unfriendly site" },
+  { value: "corporate_email", label: "No corp email", description: "Using Gmail/Yahoo for business" },
+];
+
 const TONES = ["friendly", "professional", "urgent", "excited", "empathetic"];
 const LANGUAGES = ["English", "Hindi", "Hinglish (Hindi + English)", "Marathi", "Tamil", "Telugu", "Gujarati", "Bengali"];
 
@@ -18,7 +24,7 @@ export default function CampaignWizard({ onSave, onCancel }) {
   const [data, setData] = useState({
     name: "",
     type: "BOTH",
-    target_filters: { city: "", category: "", min_score: 50, no_website_only: false },
+    target_filters: { city: "", category: "", min_score: 50, no_website_only: false, service_needs: [], no_corporate_email: false },
     email_subject: "",
     email_template_html: FALLBACK_EMAIL,
     whatsapp_template: FALLBACK_WA,
@@ -33,6 +39,7 @@ export default function CampaignWizard({ onSave, onCancel }) {
     tone: "friendly",
     language: "English",
     extra_offer: "",
+    service_type: "new_website",
   });
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState(null);
@@ -42,6 +49,12 @@ export default function CampaignWizard({ onSave, onCancel }) {
   const update = (key, value) => setData((p) => ({ ...p, [key]: value }));
   const updateFilter = (key, value) =>
     setData((p) => ({ ...p, target_filters: { ...p.target_filters, [key]: value } }));
+  const toggleServiceNeed = (need) =>
+    setData((p) => {
+      const needs = p.target_filters.service_needs || [];
+      const updated = needs.includes(need) ? needs.filter((n) => n !== need) : [...needs, need];
+      return { ...p, target_filters: { ...p.target_filters, service_needs: updated } };
+    });
 
   const handleGenerate = async () => {
     setAiLoading(true);
@@ -53,6 +66,7 @@ export default function CampaignWizard({ onSave, onCancel }) {
         ...aiForm,
         city: aiForm.city || data.target_filters.city || "your city",
         business_category: aiForm.business_category || data.target_filters.category || "local business",
+        service_type: aiForm.service_type,
       });
       setAiResult(res.data);
     } catch (e) {
@@ -167,6 +181,34 @@ export default function CampaignWizard({ onSave, onCancel }) {
                 <input type="checkbox" checked={data.target_filters.no_website_only} onChange={(e) => updateFilter("no_website_only", e.target.checked)} className="accent-blue-600" />
                 Only target businesses <strong>without a website</strong> (highest conversion potential)
               </label>
+
+              <div>
+                <label className="label">Service Needs (target leads needing...)</label>
+                <div className="space-y-2">
+                  {SERVICE_NEED_OPTIONS.map((opt) => (
+                    <label key={opt.value} className="flex items-start gap-3 p-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 accent-blue-600"
+                        checked={(data.target_filters.service_needs || []).includes(opt.value)}
+                        onChange={() => toggleServiceNeed(opt.value)}
+                      />
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">{opt.label}</div>
+                        <div className="text-xs text-gray-500">{opt.description}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {(data.target_filters.service_needs || []).length === 0 && (
+                  <p className="text-xs text-gray-400 mt-1">Leave all unchecked to target all leads</p>
+                )}
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                <input type="checkbox" checked={data.target_filters.no_corporate_email} onChange={(e) => updateFilter("no_corporate_email", e.target.checked)} className="accent-blue-600" />
+                Only businesses <strong>without corporate email</strong> (using Gmail/Yahoo)
+              </label>
             </>
           )}
 
@@ -179,6 +221,32 @@ export default function CampaignWizard({ onSave, onCancel }) {
                   <p className="text-sm font-semibold text-gray-800">Generate with Claude AI</p>
                   <p className="text-xs text-gray-500">Claude will write a personalized email and WhatsApp template tailored to your target audience.</p>
                 </div>
+              </div>
+
+              <div>
+                <label className="label">What does this prospect need?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: "new_website", label: "No Website", desc: "Never had a site" },
+                    { value: "redesign", label: "Old/Broken Site", desc: "Needs a revamp" },
+                    { value: "corporate_email", label: "Corp Email", desc: "Using Gmail for work" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setAiForm((p) => ({ ...p, service_type: opt.value }))}
+                      className={`py-2 px-3 rounded-lg border text-left transition-colors ${
+                        aiForm.service_type === opt.value
+                          ? "border-purple-500 bg-purple-50 text-purple-800"
+                          : "border-gray-200 text-gray-600 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="text-xs font-semibold">{opt.label}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Claude will tailor the copy to speak directly to this pain point.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -336,6 +404,8 @@ export default function CampaignWizard({ onSave, onCancel }) {
                   ["Category", data.target_filters.category || "All"],
                   ["Min Lead Score", data.target_filters.min_score],
                   ["No-website only", data.target_filters.no_website_only ? "Yes" : "No"],
+                  ["Service Needs", (data.target_filters.service_needs || []).join(", ") || "All"],
+                  ["No corp email only", data.target_filters.no_corporate_email ? "Yes" : "No"],
                   ["Email Subject", data.email_subject || "(none)"],
                   ["Follow-ups", `Day ${data.follow_up_days.join(", ")}`],
                 ].map(([k, v]) => (

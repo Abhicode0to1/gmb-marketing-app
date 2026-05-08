@@ -71,11 +71,16 @@ export default function Campaigns() {
                 <span className={`badge ${STATUS_COLORS[c.status]}`}>{c.status}</span>
                 <span className="badge bg-blue-50 text-blue-600">{c.type}</span>
               </div>
-              <div className="text-xs text-gray-400 mt-1 space-x-3">
-                {c.target_filters?.city && <span>City: {c.target_filters.city}</span>}
-                {c.target_filters?.category && <span>Category: {c.target_filters.category}</span>}
-                {c.target_filters?.min_score && <span>Min score: {c.target_filters.min_score}</span>}
-                {c.follow_up_days && <span>Follow-ups: day {c.follow_up_days.join(", ")}</span>}
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                {c.target_filters?.city && <span className="badge bg-gray-100 text-gray-600">📍 {c.target_filters.city}</span>}
+                {c.target_filters?.category && <span className="badge bg-gray-100 text-gray-600">🏪 {c.target_filters.category}</span>}
+                {c.target_filters?.min_score && <span className="badge bg-gray-100 text-gray-600">Score ≥{c.target_filters.min_score}</span>}
+                {c.target_filters?.no_website_only && <span className="badge bg-orange-100 text-orange-700">No website</span>}
+                {(c.target_filters?.service_needs || []).map((n) => (
+                  <span key={n} className="badge bg-purple-100 text-purple-700">{n.replace("_", " ")}</span>
+                ))}
+                {c.target_filters?.no_corporate_email && <span className="badge bg-purple-100 text-purple-700">No corp email</span>}
+                {c.follow_up_days?.length > 0 && <span className="badge bg-blue-50 text-blue-600">↩ Day {c.follow_up_days.join(", ")}</span>}
               </div>
             </div>
             <div className="flex items-center gap-2">
