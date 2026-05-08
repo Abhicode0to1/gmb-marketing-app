@@ -1,14 +1,15 @@
 """
-WhatsApp messaging via Twilio WhatsApp API.
-Supports both template messages (first outreach) and session messages (replies).
+WhatsApp messaging via Meta Cloud API (WhatsApp Business Platform).
+Credentials are read from the app_settings table at send time.
 """
+import httpx
 from datetime import datetime, timezone
 
-from twilio.rest import Client
-
-from app.config import settings
 from app.models.lead import Lead
 from app.models.message import Message, MessageChannel, MessageDirection, MessageStatus
+from app.services.settings_service import get_cached
+
+_META_API_BASE = "https://graph.facebook.com/v19.0"
 
 
 def _personalize(template: str, lead: Lead) -> str:
@@ -24,28 +25,49 @@ def _personalize(template: str, lead: Lead) -> str:
 
 
 def _format_phone(phone: str) -> str:
-    """Ensure phone number is in E.164 format for WhatsApp."""
-    digits = "".join(c for c in phone if c.isdigit() or c == "+")
-    if not digits.startswith("+"):
-        # Default to India country code if no prefix
-        digits = "+91" + digits.lstrip("0")
-    return f"whatsapp:{digits}"
+    """Convert phone number to E.164 format (e.g. +919876543210)."""
+    digits = "".join(c for c in phone if c.isdigit())
+    if phone.startswith("+"):
+        return "+" + digits
+    if len(digits) == 10:
+        return "+91" + digits   # default India
+    if len(digits) == 12 and digits.startswith("91"):
+        return "+" + digits
+    return "+" + digits
 
 
-def send_whatsapp(lead: Lead, template: str, campaign_id=None) -> Message:
-    """Send a WhatsApp message to a lead. Returns a Message record (unsaved)."""
+async def send_whatsapp(lead: Lead, template: str, campaign_id=None) -> Message:
+    """Send a WhatsApp message via Meta Cloud API. Returns an unsaved Message record."""
+    phone_number_id = get_cached("WA_PHONE_NUMBER_ID")
+    access_token = get_cached("WA_ACCESS_TOKEN")
+
+    if not phone_number_id or not access_token:
+        raise ValueError("WhatsApp not configured. Go to Settings → WhatsApp to add credentials.")
     if not lead.phone:
         raise ValueError(f"Lead {lead.id} has no phone number")
 
     personalized = _personalize(template, lead)
     to_number = _format_phone(lead.phone)
 
-    client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-    twilio_msg = client.messages.create(
-        from_=settings.TWILIO_WHATSAPP_FROM,
-        to=to_number,
-        body=personalized,
-    )
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"{_META_API_BASE}/{phone_number_id}/messages",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to_number,
+                "type": "text",
+                "text": {"preview_url": False, "body": personalized},
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    external_id = (data.get("messages") or [{}])[0].get("id")
 
     return Message(
         lead_id=lead.id,
@@ -54,6 +76,6 @@ def send_whatsapp(lead: Lead, template: str, campaign_id=None) -> Message:
         direction=MessageDirection.sent,
         content=personalized,
         status=MessageStatus.sent,
-        external_id=twilio_msg.sid,
+        external_id=external_id,
         sent_at=datetime.now(timezone.utc),
     )

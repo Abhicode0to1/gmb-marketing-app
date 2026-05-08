@@ -8,6 +8,7 @@ import Pipeline from "./pages/Pipeline";
 import Campaigns from "./pages/Campaigns";
 import Inbox from "./pages/Inbox";
 import Analytics from "./pages/Analytics";
+import Settings from "./pages/Settings";
 
 function RequireAuth({ children }) {
   const token = localStorage.getItem("token");
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="campaigns" element={<Campaigns />} />
           <Route path="inbox" element={<Inbox />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -81,11 +81,11 @@ async def send_message(body: SendMessageRequest, db: AsyncSession = Depends(get_
         if body.channel == MessageChannel.email:
             if not lead.email:
                 raise HTTPException(400, "Lead has no email")
-            msg = send_email(lead, body.subject or "Following up", body.content)
+            msg = await send_email(lead, body.subject or "Following up", body.content)
         else:
             if not lead.phone:
                 raise HTTPException(400, "Lead has no phone")
-            msg = send_whatsapp(lead, body.content)
+            msg = await send_whatsapp(lead, body.content)
 
         db.add(msg)
         await db.commit()

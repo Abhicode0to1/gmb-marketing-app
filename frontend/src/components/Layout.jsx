@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Search, Users, Kanban, Megaphone, Inbox, BarChart3, LogOut,
+  LayoutDashboard, Search, Users, Kanban, Megaphone, Inbox, BarChart3, LogOut, Settings,
 } from "lucide-react";
 
 const NAV = [
@@ -11,6 +11,7 @@ const NAV = [
   { to: "/campaigns", icon: Megaphone, label: "Campaigns" },
   { to: "/inbox", icon: Inbox, label: "Inbox" },
   { to: "/analytics", icon: BarChart3, label: "Analytics" },
+  { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
 export default function Layout() {

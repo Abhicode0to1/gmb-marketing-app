@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import analytics, auth, campaigns, inbox, leads, templates, webhooks
+from app.api import analytics, auth, campaigns, inbox, leads, templates, webhooks, app_settings
 from app.config import settings
 
 app = FastAPI(title="GMB Marketing Automation", version="1.0.0", docs_url="/docs", redoc_url="/redoc")
@@ -32,6 +32,15 @@ app.include_router(inbox.router)
 app.include_router(analytics.router)
 app.include_router(templates.router)
 app.include_router(webhooks.router)
+app.include_router(app_settings.router)
+
+
+@app.on_event("startup")
+async def startup():
+    from app.database import AsyncSessionLocal
+    from app.services.settings_service import refresh_cache
+    async with AsyncSessionLocal() as db:
+        await refresh_cache(db)
 
 
 @app.get("/health")

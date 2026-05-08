@@ -66,12 +66,12 @@ async def launch_campaign(db: AsyncSession, campaign_id: str) -> dict:
         try:
             if campaign.type in (CampaignType.email, CampaignType.both):
                 if lead.email and campaign.email_template_html and campaign.email_subject:
-                    msg = send_email(lead, campaign.email_subject, campaign.email_template_html, campaign.id)
+                    msg = await send_email(lead, campaign.email_subject, campaign.email_template_html, campaign.id)
                     db.add(msg)
 
             if campaign.type in (CampaignType.whatsapp, CampaignType.both):
                 if lead.phone and campaign.whatsapp_template:
-                    msg = send_whatsapp(lead, campaign.whatsapp_template, campaign.id)
+                    msg = await send_whatsapp(lead, campaign.whatsapp_template, campaign.id)
                     db.add(msg)
 
             lead.status = LeadStatus.contacted
@@ -140,12 +140,12 @@ async def process_followups(db: AsyncSession) -> dict:
                 if campaign.type in (CampaignType.email, CampaignType.both):
                     if lead.email and campaign.email_template_html and campaign.email_subject:
                         subject = f"Follow-up: {campaign.email_subject}"
-                        msg = send_email(lead, subject, campaign.email_template_html, campaign.id)
+                        msg = await send_email(lead, subject, campaign.email_template_html, campaign.id)
                         db.add(msg)
 
                 if campaign.type in (CampaignType.whatsapp, CampaignType.both):
                     if lead.phone and campaign.whatsapp_template:
-                        msg = send_whatsapp(lead, campaign.whatsapp_template, campaign.id)
+                        msg = await send_whatsapp(lead, campaign.whatsapp_template, campaign.id)
                         db.add(msg)
 
                 lead.last_contacted_at = now

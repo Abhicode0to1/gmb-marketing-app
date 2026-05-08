@@ -29,6 +29,12 @@ export const sendMessage = (data) => api.post("/inbox/send", data);
 // Templates (Claude AI)
 export const generateTemplates = (data) => api.post("/templates/generate", data);
 
+// Settings
+export const getSettings = () => api.get("/settings");
+export const saveSettings = (data) => api.put("/settings", data);
+export const testEmail = () => api.post("/settings/test-email");
+export const testWhatsApp = () => api.post("/settings/test-whatsapp");
+
 // Analytics
 export const getOverview = () => api.get("/analytics/overview");
 export const getPipelineStats = () => api.get("/analytics/pipeline");

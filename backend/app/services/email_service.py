@@ -1,19 +1,18 @@
 """
-Email sending via SendGrid with personalization and tracking.
+Email sending via Gmail SMTP using aiosmtplib.
+Credentials are read from the app_settings table at send time.
 """
-import re
+import aiosmtplib
 from datetime import datetime, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, To
-
-from app.config import settings
 from app.models.lead import Lead
 from app.models.message import Message, MessageChannel, MessageDirection, MessageStatus
+from app.services.settings_service import get_cached
 
 
 def _personalize(template: str, lead: Lead) -> str:
-    """Replace {business_name}, {city}, {phone} tokens in template."""
     replacements = {
         "{business_name}": lead.business_name or "",
         "{city}": lead.city or "",
@@ -27,32 +26,35 @@ def _personalize(template: str, lead: Lead) -> str:
     return result
 
 
-def send_email(lead: Lead, subject: str, html_template: str, campaign_id=None) -> Message:
-    """Send a personalized email to a lead. Returns a Message record (unsaved)."""
+async def send_email(lead: Lead, subject: str, html_template: str, campaign_id=None) -> Message:
+    """Send a personalized email to a lead via Gmail SMTP. Returns an unsaved Message record."""
+    gmail_user = get_cached("GMAIL_ADDRESS")
+    gmail_pass = get_cached("GMAIL_APP_PASSWORD")
+    from_name = get_cached("GMAIL_FROM_NAME") or "Web Design Team"
+
+    if not gmail_user or not gmail_pass:
+        raise ValueError("Gmail SMTP not configured. Go to Settings → Email to add credentials.")
     if not lead.email:
         raise ValueError(f"Lead {lead.id} has no email address")
 
     personalized_subject = _personalize(subject, lead)
     personalized_html = _personalize(html_template, lead)
 
-    message = Mail(
-        from_email=(settings.SENDGRID_FROM_EMAIL, settings.SENDGRID_FROM_NAME),
-        to_emails=To(lead.email, lead.business_name),
-        subject=personalized_subject,
-        html_content=personalized_html,
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = personalized_subject
+    msg["From"] = f"{from_name} <{gmail_user}>"
+    msg["To"] = lead.email
+
+    msg.attach(MIMEText(personalized_html, "html", "utf-8"))
+
+    await aiosmtplib.send(
+        msg,
+        hostname="smtp.gmail.com",
+        port=587,
+        username=gmail_user,
+        password=gmail_pass,
+        start_tls=True,
     )
-    # Enable open and click tracking
-    message.tracking_settings = {
-        "click_tracking": {"enable": True},
-        "open_tracking": {"enable": True},
-    }
-
-    sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
-    response = sg.send(message)
-
-    external_id = None
-    if response.headers:
-        external_id = response.headers.get("X-Message-Id")
 
     return Message(
         lead_id=lead.id,
@@ -62,6 +64,5 @@ def send_email(lead: Lead, subject: str, html_template: str, campaign_id=None) -
         subject=personalized_subject,
         content=personalized_html,
         status=MessageStatus.sent,
-        external_id=external_id,
         sent_at=datetime.now(timezone.utc),
     )
