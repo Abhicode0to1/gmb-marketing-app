@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search, Globe, Phone, Mail, Star } from "lucide-react";
+import { Search, Globe, Phone, Mail, Star, AlertTriangle, Clock } from "lucide-react";
 import { getLeads, updateLead } from "../api";
 
 const STATUS_COLORS = {
@@ -13,13 +13,34 @@ const STATUS_COLORS = {
 
 const STATUSES = ["new", "contacted", "interested", "negotiating", "converted", "lost"];
 
+const SERVICE_NEED_CFG = {
+  new_website: { label: "No Site", color: "bg-orange-100 text-orange-700", icon: Globe },
+  redesign: { label: "Redesign", color: "bg-red-100 text-red-700", icon: AlertTriangle },
+  corporate_email: { label: "No Corp Email", color: "bg-purple-100 text-purple-700", icon: Mail },
+};
+
+const WEBSITE_STATUS_CFG = {
+  none: { label: "No website", color: "bg-orange-100 text-orange-600" },
+  social_only: { label: "Social only", color: "bg-yellow-100 text-yellow-700" },
+  broken: { label: "Broken", color: "bg-red-100 text-red-700" },
+  old: { label: "Outdated", color: "bg-amber-100 text-amber-700" },
+  alive: { label: "Live", color: "bg-green-100 text-green-700" },
+};
+
 export default function Leads() {
   const [leads, setLeads] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({ status: "", city: "", search: "", no_website_only: false, min_score: "" });
+  const [filters, setFilters] = useState({
+    status: "",
+    city: "",
+    search: "",
+    no_website_only: false,
+    min_score: "",
+    website_status: "",
+    service_needs: "",
+  });
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState(null);
 
   const fetchLeads = async () => {
     setLoading(true);
@@ -29,6 +50,8 @@ export default function Leads() {
       if (!params.city) delete params.city;
       if (!params.search) delete params.search;
       if (!params.min_score) delete params.min_score;
+      if (!params.website_status) delete params.website_status;
+      if (!params.service_needs) delete params.service_needs;
       const res = await getLeads(params);
       setLeads(res.data.leads);
       setTotal(res.data.total);
@@ -85,14 +108,28 @@ export default function Leads() {
           value={filters.min_score}
           onChange={(e) => setFilters((p) => ({ ...p, min_score: e.target.value }))}
         />
-        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={filters.no_website_only}
-            onChange={(e) => setFilters((p) => ({ ...p, no_website_only: e.target.checked }))}
-          />
-          No website only
-        </label>
+        <select
+          className="input w-40"
+          value={filters.website_status}
+          onChange={(e) => setFilters((p) => ({ ...p, website_status: e.target.value }))}
+        >
+          <option value="">All site status</option>
+          <option value="none">No website</option>
+          <option value="social_only">Social only</option>
+          <option value="broken">Broken site</option>
+          <option value="old">Outdated site</option>
+          <option value="alive">Live site</option>
+        </select>
+        <select
+          className="input w-44"
+          value={filters.service_needs}
+          onChange={(e) => setFilters((p) => ({ ...p, service_needs: e.target.value }))}
+        >
+          <option value="">All service needs</option>
+          <option value="new_website">Needs new website</option>
+          <option value="redesign">Needs redesign</option>
+          <option value="corporate_email">Needs corp email</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -103,6 +140,7 @@ export default function Leads() {
               <tr>
                 <th className="text-left px-4 py-3 text-gray-500 font-medium">Business</th>
                 <th className="text-left px-4 py-3 text-gray-500 font-medium">Contact</th>
+                <th className="text-left px-4 py-3 text-gray-500 font-medium">Needs</th>
                 <th className="text-left px-4 py-3 text-gray-500 font-medium">Score</th>
                 <th className="text-left px-4 py-3 text-gray-500 font-medium">Status</th>
                 <th className="text-left px-4 py-3 text-gray-500 font-medium">Rating</th>
@@ -110,51 +148,71 @@ export default function Leads() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
               ) : leads.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No leads found</td></tr>
-              ) : leads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{lead.business_name}</div>
-                    <div className="text-xs text-gray-400">{lead.city} · {lead.category}</div>
-                    {!lead.has_website && (
-                      <span className="badge bg-orange-100 text-orange-600 mt-1">No website</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 space-y-0.5">
-                    {lead.phone && <div className="flex items-center gap-1.5 text-gray-600"><Phone size={12} />{lead.phone}</div>}
-                    {lead.email && <div className="flex items-center gap-1.5 text-gray-600"><Mail size={12} />{lead.email}</div>}
-                    {lead.website && <div className="flex items-center gap-1.5 text-blue-500"><Globe size={12} /><a href={lead.website} target="_blank" rel="noreferrer" className="underline">Website</a></div>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      lead.lead_score >= 70 ? "bg-green-100 text-green-700" :
-                      lead.lead_score >= 40 ? "bg-yellow-100 text-yellow-700" :
-                      "bg-gray-100 text-gray-600"
-                    }`}>
-                      {lead.lead_score}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <select
-                      className={`badge cursor-pointer border-0 ${STATUS_COLORS[lead.status]} py-1`}
-                      value={lead.status}
-                      onChange={(e) => handleStatusChange(lead.id, e.target.value)}
-                    >
-                      {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3">
-                    {lead.rating ? (
-                      <div className="flex items-center gap-1 text-yellow-500">
-                        <Star size={12} fill="currentColor" />
-                        <span className="text-gray-700 text-xs">{lead.rating} ({lead.review_count})</span>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No leads found</td></tr>
+              ) : leads.map((lead) => {
+                const wsCfg = lead.website_status ? WEBSITE_STATUS_CFG[lead.website_status] : null;
+                return (
+                  <tr key={lead.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{lead.business_name}</div>
+                      <div className="text-xs text-gray-400">{lead.city} · {lead.category}</div>
+                      {wsCfg && (
+                        <span className={`badge mt-1 ${wsCfg.color}`}>{wsCfg.label}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 space-y-0.5">
+                      {lead.phone && <div className="flex items-center gap-1.5 text-gray-600"><Phone size={12} />{lead.phone}</div>}
+                      {lead.email && <div className="flex items-center gap-1.5 text-gray-600"><Mail size={12} />{lead.email}</div>}
+                      {lead.website && <div className="flex items-center gap-1.5 text-blue-500"><Globe size={12} /><a href={lead.website} target="_blank" rel="noreferrer" className="underline">Website</a></div>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {(lead.service_needs || []).map((need) => {
+                          const cfg = SERVICE_NEED_CFG[need];
+                          if (!cfg) return null;
+                          const Icon = cfg.icon;
+                          return (
+                            <span key={need} className={`badge ${cfg.color} flex items-center gap-1`}>
+                              <Icon size={10} /> {cfg.label}
+                            </span>
+                          );
+                        })}
+                        {(!lead.service_needs || lead.service_needs.length === 0) && (
+                          <span className="text-gray-400 text-xs">—</span>
+                        )}
                       </div>
-                    ) : "—"}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        lead.lead_score >= 70 ? "bg-green-100 text-green-700" :
+                        lead.lead_score >= 40 ? "bg-yellow-100 text-yellow-700" :
+                        "bg-gray-100 text-gray-600"
+                      }`}>
+                        {lead.lead_score}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <select
+                        className={`badge cursor-pointer border-0 ${STATUS_COLORS[lead.status]} py-1`}
+                        value={lead.status}
+                        onChange={(e) => handleStatusChange(lead.id, e.target.value)}
+                      >
+                        {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-4 py-3">
+                      {lead.rating ? (
+                        <div className="flex items-center gap-1 text-yellow-500">
+                          <Star size={12} fill="currentColor" />
+                          <span className="text-gray-700 text-xs">{lead.rating} ({lead.review_count})</span>
+                        </div>
+                      ) : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

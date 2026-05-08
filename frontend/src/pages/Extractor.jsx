@@ -1,8 +1,22 @@
 import { useState } from "react";
-import { Search, CheckCircle, Loader, Globe, Mail } from "lucide-react";
+import { Search, CheckCircle, Loader, Globe, Mail, AlertTriangle, Clock } from "lucide-react";
 import { startExtraction } from "../api";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+const SERVICE_NEED_LABELS = {
+  new_website: { label: "No Site", color: "bg-orange-100 text-orange-700", icon: Globe },
+  redesign: { label: "Old/Broken", color: "bg-red-100 text-red-700", icon: AlertTriangle },
+  corporate_email: { label: "No Corp Email", color: "bg-purple-100 text-purple-700", icon: Mail },
+};
+
+const WEBSITE_STATUS_LABELS = {
+  none: { label: "No website", color: "bg-orange-100 text-orange-700" },
+  social_only: { label: "Social only", color: "bg-yellow-100 text-yellow-700" },
+  broken: { label: "Broken site", color: "bg-red-100 text-red-700" },
+  old: { label: "Outdated site", color: "bg-amber-100 text-amber-700" },
+  alive: { label: "Has website", color: "bg-green-100 text-green-700" },
+};
 
 export default function Extractor() {
   const [form, setForm] = useState({
@@ -37,7 +51,13 @@ export default function Extractor() {
       setProgress(data);
       if (data.lead_name) {
         setLog((prev) => [
-          { name: data.lead_name, score: data.lead_score, status: data.status },
+          {
+            name: data.lead_name,
+            score: data.lead_score,
+            status: data.status,
+            website_status: data.website_status,
+            service_needs: data.service_needs || [],
+          },
           ...prev.slice(0, 49),
         ]);
       }
@@ -63,7 +83,7 @@ export default function Extractor() {
       <div>
         <h2 className="text-xl font-bold text-gray-900">GMB Extractor</h2>
         <p className="text-gray-500 text-sm">
-          Find businesses with no website &amp; no corporate email — ideal prospects for web design services
+          Find businesses with no website, broken or outdated sites, and no corporate email
         </p>
       </div>
 
@@ -114,7 +134,7 @@ export default function Extractor() {
             </div>
           </div>
 
-          {/* Key filter */}
+          {/* Target filter */}
           <label className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors">
             <input
               type="checkbox"
@@ -125,17 +145,17 @@ export default function Extractor() {
             <div>
               <div className="flex items-center gap-2 text-sm font-medium text-blue-800">
                 <Globe size={14} />
-                Only businesses without a real website
+                Skip businesses with proper websites
               </div>
               <p className="text-xs text-blue-600 mt-0.5">
-                Skips businesses with proper websites. Targets those using only Facebook/Instagram or nothing at all — they almost certainly use Gmail/Yahoo instead of corporate email.
+                Only targets businesses using Facebook/Instagram as their "website" or nothing at all — the best prospects for web design services.
               </p>
             </div>
           </label>
 
           <button className="btn-primary w-full justify-center" disabled={running}>
             {running ? (
-              <><Loader size={16} className="animate-spin" /> Extracting...</>
+              <><Loader size={16} className="animate-spin" /> Extracting &amp; Analysing...</>
             ) : (
               <><Search size={16} /> Start Extraction</>
             )}
@@ -147,7 +167,7 @@ export default function Extractor() {
         <div className="card p-5 max-w-2xl">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">
-              {done ? "Extraction complete!" : "Extracting leads..."}
+              {done ? "Extraction complete!" : "Extracting & analysing leads..."}
             </span>
             <span className="text-sm text-gray-500">
               {progress.processed} / {progress.total}
@@ -181,22 +201,29 @@ export default function Extractor() {
             </div>
           )}
 
-          <div className="max-h-64 overflow-y-auto space-y-1">
+          <div className="max-h-72 overflow-y-auto space-y-1">
             {log.map((item, i) => (
               <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-50">
-                <span className="text-gray-700 truncate max-w-xs">{item.name}</span>
-                <div className="flex items-center gap-2 shrink-0">
+                <span className="text-gray-700 truncate max-w-[200px]">{item.name}</span>
+                <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0 ml-2">
                   <span className={`badge ${item.score >= 60 ? "bg-green-100 text-green-700" : item.score >= 40 ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
-                    Score: {item.score}
+                    {item.score}
                   </span>
-                  {!item.has_website && (
-                    <span className="badge bg-orange-100 text-orange-700 flex items-center gap-1">
-                      <Globe size={10} /> No site
+                  {item.website_status && WEBSITE_STATUS_LABELS[item.website_status] && (
+                    <span className={`badge ${WEBSITE_STATUS_LABELS[item.website_status].color}`}>
+                      {WEBSITE_STATUS_LABELS[item.website_status].label}
                     </span>
                   )}
-                  <span className="badge bg-purple-100 text-purple-700 flex items-center gap-1">
-                    <Mail size={10} /> Gmail likely
-                  </span>
+                  {(item.service_needs || []).map((need) => {
+                    const cfg = SERVICE_NEED_LABELS[need];
+                    if (!cfg) return null;
+                    const Icon = cfg.icon;
+                    return (
+                      <span key={need} className={`badge ${cfg.color} flex items-center gap-1`}>
+                        <Icon size={9} /> {cfg.label}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             ))}

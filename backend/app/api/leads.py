@@ -37,6 +37,9 @@ class LeadOut(BaseModel):
     status: str
     notes: str | None
     assigned_to: uuid.UUID | None
+    website_status: str | None = None
+    service_needs: list | None = None
+    has_corporate_email: bool | None = None
 
     class Config:
         from_attributes = True
@@ -54,6 +57,8 @@ async def list_leads(
     min_score: int | None = None,
     no_website_only: bool = False,
     search: str | None = None,
+    website_status: str | None = None,
+    service_needs: str | None = None,
 ):
     query = select(Lead)
 
@@ -69,6 +74,13 @@ async def list_leads(
         query = query.where(Lead.has_website == False)  # noqa: E712
     if search:
         query = query.where(Lead.business_name.ilike(f"%{search}%"))
+    if website_status:
+        query = query.where(Lead.website_status == website_status)
+    if service_needs:
+        from sqlalchemy import or_
+        needs_list = [n.strip() for n in service_needs.split(",") if n.strip()]
+        if needs_list:
+            query = query.where(or_(*[Lead.service_needs.contains([n]) for n in needs_list]))
 
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar()

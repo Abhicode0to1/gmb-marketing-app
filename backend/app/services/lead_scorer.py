@@ -19,6 +19,7 @@ def score_lead(
     rating: float | None,
     review_count: int | None,
     category: str | None,
+    website_status: str | None = None,
 ) -> int:
     score = 0
 
@@ -29,6 +30,12 @@ def score_lead(
     elif is_social_only:
         # Facebook/Instagram page only → likely using personal email → strong prospect
         score += 40
+    elif website_status == "broken":
+        # Dead website → urgent redesign need
+        score += 30
+    elif website_status == "old":
+        # Outdated site → redesign opportunity
+        score += 20
 
     # ── Review count: fewer reviews = lower online visibility ───────────────
     if review_count is not None:

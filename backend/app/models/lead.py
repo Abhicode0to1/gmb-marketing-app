@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -38,6 +38,9 @@ class Lead(Base):
     lead_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
     status: Mapped[LeadStatus] = mapped_column(String(20), default=LeadStatus.new, index=True)
     notes: Mapped[str | None] = mapped_column(Text)
+    website_status: Mapped[str | None] = mapped_column(String(20), index=True)
+    service_needs: Mapped[list | None] = mapped_column(JSONB)
+    has_corporate_email: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_contacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.lead import Lead, LeadStatus
 from app.services.lead_scorer import score_lead
+from app.services.website_analyzer import WebsiteAnalysis, analyze_website
+from app.services.email_checker import check_corporate_email
 
 PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PLACES_FIELD_MASK = (
@@ -144,7 +146,22 @@ async def extract_leads(
             city_val, state_val = _extract_city_state(formatted_address)
             notes = build_notes(has_real_website, is_social_only, raw_website)
 
-            lead_score = score_lead(has_real_website, is_social_only, rating, review_count, category)
+            # Concurrent: analyze website quality + detect corporate email
+            if has_real_website and raw_website:
+                site_analysis, has_corp_email = await asyncio.gather(
+                    analyze_website(raw_website),
+                    check_corporate_email(raw_website, None),
+                )
+                website_status = site_analysis.status
+                service_needs = list(site_analysis.service_needs)
+                if not has_corp_email:
+                    service_needs.append("corporate_email")
+            else:
+                website_status = "social_only" if is_social_only else "none"
+                service_needs = ["new_website", "corporate_email"]
+                has_corp_email = False
+
+            lead_score = score_lead(has_real_website, is_social_only, rating, review_count, category, website_status)
 
             lead = Lead(
                 business_name=name,
@@ -162,6 +179,9 @@ async def extract_leads(
                 lead_score=lead_score,
                 status=LeadStatus.new,
                 notes=notes,
+                website_status=website_status,
+                service_needs=service_needs,
+                has_corporate_email=has_corp_email,
             )
             db.add(lead)
             await db.commit()
