@@ -16,7 +16,8 @@ PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PLACES_FIELD_MASK = (
     "places.id,places.displayName,places.formattedAddress,"
     "places.nationalPhoneNumber,places.internationalPhoneNumber,"
-    "places.websiteUri,places.rating,places.userRatingCount,places.types"
+    "places.websiteUri,places.rating,places.userRatingCount,places.types,"
+    "nextPageToken"
 )
 
 
