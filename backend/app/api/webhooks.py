@@ -92,9 +92,10 @@ async def sendgrid_inbound(request: Request, background_tasks: BackgroundTasks):
 @router.get("/whatsapp")
 async def whatsapp_verify(request: Request):
     """Meta webhook verification challenge."""
-    from app.config import settings
+    from app.services.settings_service import get_cached
     params = dict(request.query_params)
-    if params.get("hub.verify_token") == settings.META_WA_VERIFY_TOKEN:
+    stored_token = get_cached("WA_VERIFY_TOKEN", "")
+    if stored_token and params.get("hub.verify_token") == stored_token:
         return int(params.get("hub.challenge", 0))
     return {"error": "Invalid verify token"}
 
