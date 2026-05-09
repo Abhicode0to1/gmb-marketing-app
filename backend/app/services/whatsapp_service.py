@@ -64,7 +64,10 @@ async def send_whatsapp(lead: Lead, template: str, campaign_id=None) -> Message:
                 "text": {"preview_url": False, "body": personalized},
             },
         )
-        resp.raise_for_status()
+        if not resp.is_success:
+            error_body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text
+            meta_msg = error_body.get("error", {}).get("message", resp.text) if isinstance(error_body, dict) else resp.text
+            raise ValueError(f"WhatsApp error: {meta_msg}")
         data = resp.json()
 
     external_id = (data.get("messages") or [{}])[0].get("id")

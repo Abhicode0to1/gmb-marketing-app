@@ -1,8 +1,9 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
@@ -24,8 +25,8 @@ class MessageOut(BaseModel):
     subject: str | None
     content: str
     status: str
-    sent_at: str | None
-    created_at: str
+    sent_at: datetime | None
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -40,11 +41,10 @@ class SendMessageRequest(BaseModel):
 
 @router.get("/conversations")
 async def list_conversations(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    """Return one item per lead that has received or sent a message, latest message first."""
+    """Return one item per lead that has at least one message, latest first."""
     result = await db.execute(
         select(Lead)
         .join(Message, Message.lead_id == Lead.id)
-        .where(Lead.status.in_([LeadStatus.interested, LeadStatus.contacted, LeadStatus.negotiating]))
         .distinct()
         .order_by(Lead.last_contacted_at.desc().nullslast())
         .limit(100)
@@ -68,7 +68,7 @@ async def get_thread(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: 
     result = await db.execute(
         select(Message).where(Message.lead_id == lead_id).order_by(Message.created_at.asc())
     )
-    return [MessageOut.model_validate(m) for m in result.scalars().all()]
+    return result.scalars().all()
 
 
 @router.post("/send", status_code=201)
@@ -87,9 +87,17 @@ async def send_message(body: SendMessageRequest, db: AsyncSession = Depends(get_
                 raise HTTPException(400, "Lead has no phone")
             msg = await send_whatsapp(lead, body.content)
 
+        # Update lead status to contacted + timestamp on first outreach
+        if lead.status == LeadStatus.new:
+            lead.status = LeadStatus.contacted
+        from datetime import timezone
+        lead.last_contacted_at = datetime.now(timezone.utc)
+
         db.add(msg)
         await db.commit()
         await db.refresh(msg)
         return {"message_id": str(msg.id), "status": msg.status}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, detail=str(e))

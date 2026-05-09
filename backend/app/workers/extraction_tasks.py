@@ -54,6 +54,7 @@ def extract_leads_task(self, keyword: str, city: str, radius_km: int, max_result
                     "lead_score": lead.lead_score if lead else None,
                     "website_status": lead.website_status if lead else None,
                     "service_needs": lead.service_needs if lead else [],
+                    "email": lead.email if lead else None,
                 }
                 _push(r, list_key, payload)
 

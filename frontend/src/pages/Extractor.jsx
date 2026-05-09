@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, CheckCircle, Loader, Globe, Mail, AlertTriangle, Clock } from "lucide-react";
+import { Search, CheckCircle, Loader, Globe, Mail, AlertTriangle } from "lucide-react";
 import { startExtraction } from "../api";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -57,6 +57,7 @@ export default function Extractor() {
             status: data.status,
             website_status: data.website_status,
             service_needs: data.service_needs || [],
+            email: data.email || null,
           },
           ...prev.slice(0, 49),
         ]);
@@ -203,15 +204,27 @@ export default function Extractor() {
 
           <div className="max-h-72 overflow-y-auto space-y-1">
             {log.map((item, i) => (
-              <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-50">
-                <span className="text-gray-700 truncate max-w-[200px]">{item.name}</span>
-                <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0 ml-2">
+              <div key={i} className="flex items-start justify-between text-sm py-1.5 border-b border-gray-50 gap-2">
+                <div className="min-w-0">
+                  <span className="text-gray-700 truncate block max-w-[200px]">{item.name}</span>
+                  {item.email && (
+                    <span className="flex items-center gap-1 text-xs text-green-700 mt-0.5">
+                      <Mail size={9} /> {item.email}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0">
                   <span className={`badge ${item.score >= 60 ? "bg-green-100 text-green-700" : item.score >= 40 ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
                     {item.score}
                   </span>
                   {item.website_status && WEBSITE_STATUS_LABELS[item.website_status] && (
                     <span className={`badge ${WEBSITE_STATUS_LABELS[item.website_status].color}`}>
                       {WEBSITE_STATUS_LABELS[item.website_status].label}
+                    </span>
+                  )}
+                  {!item.email && (
+                    <span className="badge bg-gray-100 text-gray-400 flex items-center gap-1">
+                      <Mail size={9} /> No email
                     </span>
                   )}
                   {(item.service_needs || []).map((need) => {

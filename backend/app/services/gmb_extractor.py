@@ -14,6 +14,7 @@ from app.models.lead import Lead, LeadStatus
 from app.services.lead_scorer import score_lead
 from app.services.website_analyzer import WebsiteAnalysis, analyze_website
 from app.services.email_checker import check_corporate_email
+from app.services.email_scraper import scrape_website_email
 
 PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PLACES_FIELD_MASK = (
@@ -146,11 +147,12 @@ async def extract_leads(
             city_val, state_val = _extract_city_state(formatted_address)
             notes = build_notes(has_real_website, is_social_only, raw_website)
 
-            # Concurrent: analyze website quality + detect corporate email
+            # Concurrent: analyze website quality + detect corporate email + scrape email
             if has_real_website and raw_website:
-                site_analysis, has_corp_email = await asyncio.gather(
+                site_analysis, has_corp_email, scraped_email = await asyncio.gather(
                     analyze_website(raw_website),
                     check_corporate_email(raw_website, None),
+                    scrape_website_email(raw_website),
                 )
                 website_status = site_analysis.status
                 service_needs = list(site_analysis.service_needs)
@@ -160,12 +162,14 @@ async def extract_leads(
                 website_status = "social_only" if is_social_only else "none"
                 service_needs = ["new_website", "corporate_email"]
                 has_corp_email = False
+                scraped_email = None
 
             lead_score = score_lead(has_real_website, is_social_only, rating, review_count, category, website_status)
 
             lead = Lead(
                 business_name=name,
                 phone=phone,
+                email=scraped_email,
                 website=raw_website if has_real_website else None,
                 has_website=has_real_website,
                 address=formatted_address,
