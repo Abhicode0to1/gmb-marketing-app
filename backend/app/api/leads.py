@@ -59,6 +59,7 @@ async def list_leads(
     search: str | None = None,
     website_status: str | None = None,
     service_needs: str | None = None,
+    has_email: bool = False,
 ):
     query = select(Lead)
 
@@ -81,6 +82,8 @@ async def list_leads(
         needs_list = [n.strip() for n in service_needs.split(",") if n.strip()]
         if needs_list:
             query = query.where(or_(*[Lead.service_needs.contains([n]) for n in needs_list]))
+    if has_email:
+        query = query.where(Lead.email.isnot(None))
 
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar()
@@ -90,6 +93,95 @@ async def list_leads(
     leads = result.scalars().all()
 
     return {"total": total, "page": page, "page_size": page_size, "leads": [LeadOut.model_validate(l) for l in leads]}
+
+
+@router.get("/export")
+async def export_leads_csv(
+    db: AsyncSession = Depends(get_db),
+    token: str | None = Query(None),
+    status: str | None = None,
+    city: str | None = None,
+    category: str | None = None,
+    min_score: int | None = None,
+    no_website_only: bool = False,
+    search: str | None = None,
+    website_status: str | None = None,
+    service_needs: str | None = None,
+    has_email: bool = False,
+):
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+    from app.services.auth_service import decode_token
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Token required")
+    payload = decode_token(token)
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user = await db.get(User, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    query = select(Lead)
+    if status:
+        query = query.where(Lead.status == status)
+    if city:
+        query = query.where(Lead.city.ilike(f"%{city}%"))
+    if category:
+        query = query.where(Lead.category.ilike(f"%{category}%"))
+    if min_score is not None:
+        query = query.where(Lead.lead_score >= min_score)
+    if no_website_only:
+        query = query.where(Lead.has_website == False)  # noqa: E712
+    if search:
+        query = query.where(Lead.business_name.ilike(f"%{search}%"))
+    if website_status:
+        query = query.where(Lead.website_status == website_status)
+    if service_needs:
+        from sqlalchemy import or_
+        needs_list = [n.strip() for n in service_needs.split(",") if n.strip()]
+        if needs_list:
+            query = query.where(or_(*[Lead.service_needs.contains([n]) for n in needs_list]))
+    if has_email:
+        query = query.where(Lead.email.isnot(None))
+
+    query = query.order_by(Lead.lead_score.desc())
+    result = await db.execute(query)
+    leads = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Business Name", "Phone", "Email", "Website",
+        "City", "State", "Category", "Rating", "Reviews",
+        "Score", "Status", "Website Status", "Service Needs", "Notes",
+    ])
+    for lead in leads:
+        writer.writerow([
+            lead.business_name or "",
+            lead.phone or "",
+            lead.email or "",
+            lead.website or "",
+            lead.city or "",
+            lead.state or "",
+            lead.category or "",
+            lead.rating or "",
+            lead.review_count or "",
+            lead.lead_score,
+            lead.status.value if hasattr(lead.status, "value") else (lead.status or ""),
+            lead.website_status or "",
+            ", ".join(lead.service_needs) if lead.service_needs else "",
+            lead.notes or "",
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=leads.csv"},
+    )
 
 
 @router.get("/{lead_id}", response_model=LeadOut)

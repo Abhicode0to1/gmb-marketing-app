@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { Search, Globe, Phone, Mail, Star, AlertTriangle, Clock } from "lucide-react";
+import { Search, Globe, Phone, Mail, Star, AlertTriangle, Download } from "lucide-react";
 import { getLeads, updateLead } from "../api";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const STATUS_COLORS = {
   new: "bg-gray-100 text-gray-600",
@@ -39,6 +41,7 @@ export default function Leads() {
     min_score: "",
     website_status: "",
     service_needs: "",
+    has_email: false,
   });
   const [loading, setLoading] = useState(false);
 
@@ -52,6 +55,7 @@ export default function Leads() {
       if (!params.min_score) delete params.min_score;
       if (!params.website_status) delete params.website_status;
       if (!params.service_needs) delete params.service_needs;
+      if (!params.has_email) delete params.has_email;
       const res = await getLeads(params);
       setLeads(res.data.leads);
       setTotal(res.data.total);
@@ -67,6 +71,21 @@ export default function Leads() {
     fetchLeads();
   };
 
+  const handleExport = () => {
+    const token = localStorage.getItem("token");
+    const params = new URLSearchParams();
+    if (filters.status) params.set("status", filters.status);
+    if (filters.city) params.set("city", filters.city);
+    if (filters.search) params.set("search", filters.search);
+    if (filters.min_score) params.set("min_score", filters.min_score);
+    if (filters.website_status) params.set("website_status", filters.website_status);
+    if (filters.service_needs) params.set("service_needs", filters.service_needs);
+    if (filters.no_website_only) params.set("no_website_only", "true");
+    if (filters.has_email) params.set("has_email", "true");
+    params.set("token", token);
+    window.open(`${API_BASE}/leads/export?${params.toString()}`, "_blank");
+  };
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -74,6 +93,9 @@ export default function Leads() {
           <h2 className="text-xl font-bold text-gray-900">Leads</h2>
           <p className="text-gray-500 text-sm">{total} total leads</p>
         </div>
+        <button className="btn-secondary flex items-center gap-2" onClick={handleExport}>
+          <Download size={15} /> Export CSV
+        </button>
       </div>
 
       {/* Filters */}
@@ -130,6 +152,15 @@ export default function Leads() {
           <option value="redesign">Needs redesign</option>
           <option value="corporate_email">Needs corp email</option>
         </select>
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-blue-600"
+            checked={filters.has_email}
+            onChange={(e) => setFilters((p) => ({ ...p, has_email: e.target.checked }))}
+          />
+          <Mail size={13} /> Has email
+        </label>
       </div>
 
       {/* Table */}
